@@ -1,107 +1,135 @@
 import streamlit as st
 import pandas as pd
-import joblib
-import math
-from datetime import datetime
+import pickle
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic
+from streamlit_folium import st_folium
+import folium
 
-# Load model
-model = joblib.load("delivery_time_model.pkl")
+# --- Load the trained model ---
+@st.cache_resource
+def load_model():
+    with open("delivery_time_model.pkl", "rb") as file:
+        model = pickle.load(file)
+    return model
 
+model = load_model()
 st.title("🚚 Improved Delivery Time Prediction System")
-st.write("Predict estimated delivery time using regression model.")
+st.caption("Prototype for thesis: Prevent Food Spoilage through Regression Models")
 
-# Sidebar inputs
-st.sidebar.header("📦 Delivery Details")
+# ====================================================
+# 📍 LOCATION INPUT SECTION
+# ====================================================
+geolocator = Nominatim(user_agent="delivery_app")
 
-age = st.sidebar.number_input("Delivery Person Age", min_value=18, max_value=65, value=30)
-rating = st.sidebar.number_input("Delivery Person Rating", min_value=0.0, max_value=5.0, value=4.5, step=0.1)
-restaurant_lat = st.sidebar.number_input("Restaurant Latitude", value=16.40)
-restaurant_lon = st.sidebar.number_input("Restaurant Longitude", value=120.59)
-delivery_lat = st.sidebar.number_input("Delivery Latitude", value=13.00)
-delivery_lon = st.sidebar.number_input("Delivery Longitude", value=77.00)
+st.subheader("📍 Input Delivery and Restaurant Locations")
 
-weather = st.sidebar.selectbox("Weather", ["Sunny", "Stormy", "Rainy", "Cloudy"])
-traffic = st.sidebar.selectbox("Traffic Density", ["Low", "Medium", "High", "Jam"])
-order_type = st.sidebar.selectbox("Type of Order", ["Meat", "Vegetables", "Fruits and Vegetables"])
-vehicle = st.sidebar.selectbox("Vehicle Type", ["motorcycle", "truck"])
-multiple = st.sidebar.selectbox("Multiple Deliveries", [0, 1])
-festival = st.sidebar.selectbox("Festival", ["Yes", "No"])
+mode = st.radio(
+    "Choose location input method:",
+    ["Manual Coordinates", "Address Search", "Interactive Map"]
+)
 
-order_time = st.sidebar.time_input("Order Time")
-pickup_time = st.sidebar.time_input("Pickup Time")
-order_date = st.sidebar.date_input("Order Date")
+restaurant_lat, restaurant_lon, delivery_lat, delivery_lon = None, None, None, None
 
-# --- Helper Functions ---
-def calculate_distance(lat1, lon1, lat2, lon2):
-    R = 6371  # Earth radius (km)
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-    c = 2 * math.asin(math.sqrt(a))
-    return R * c
+# --- Option 1: Manual ---
+if mode == "Manual Coordinates":
+    restaurant_lat = st.number_input("Restaurant Latitude", value=16.408176, format="%.6f")
+    restaurant_lon = st.number_input("Restaurant Longitude", value=120.594594, format="%.6f")
+    delivery_lat = st.number_input("Delivery Latitude", value=16.420000, format="%.6f")
+    delivery_lon = st.number_input("Delivery Longitude", value=120.600000, format="%.6f")
 
-distance = calculate_distance(restaurant_lat, restaurant_lon, delivery_lat, delivery_lon)
+# --- Option 2: Address Search ---
+elif mode == "Address Search":
+    restaurant_address = st.text_input("Restaurant Address", "SM City Baguio, Philippines")
+    delivery_address = st.text_input("Delivery Address", "Burnham Park, Baguio City, Philippines")
 
-# Compute derived time features
-try:
-    order_dt = datetime.combine(order_date, order_time)
-    pickup_dt = datetime.combine(order_date, pickup_time)
-    time_diff = (pickup_dt - order_dt).total_seconds() / 60
-    order_hour = order_time.hour
-    pickup_hour = pickup_time.hour
-    day_of_week = order_date.weekday()
-except Exception:
-    time_diff = 0
-    order_hour = 0
-    pickup_hour = 0
-    day_of_week = 0
+    def get_coordinates(address):
+        try:
+            location = geolocator.geocode(address)
+            if location:
+                return location.latitude, location.longitude
+            else:
+                st.warning(f"⚠️ Could not find coordinates for: {address}")
+                return None, None
+        except:
+            st.error("❌ Error connecting to geolocation service.")
+            return None, None
 
-# Create dataframe
-input_data = pd.DataFrame({
-    'Delivery_person_Age': [age],
-    'Delivery_person_Ratings': [rating],
-    'Restaurant_latitude': [restaurant_lat],
-    'Restaurant_longitude': [restaurant_lon],
-    'Delivery_location_latitude': [delivery_lat],
-    'Delivery_location_longitude': [delivery_lon],
-    'Weatherconditions': [weather],
-    'Road_traffic_density': [traffic],
-    'Type_of_order': [order_type],
-    'Type_of_vehicle': [vehicle],
-    'multiple_deliveries': [multiple],
-    'Festival': [festival],
-    'distance': [distance],
-    'time_diff': [time_diff],
-    'order_hour': [order_hour],
-    'pickup_hour': [pickup_hour],
-    'day_of_week': [day_of_week]
-})
+    if st.button("🔍 Get Coordinates"):
+        restaurant_lat, restaurant_lon = get_coordinates(restaurant_address)
+        delivery_lat, delivery_lon = get_coordinates(delivery_address)
+        if restaurant_lat and delivery_lat:
+            st.success("✅ Coordinates fetched successfully!")
 
-st.write("### Input Summary")
-st.write(input_data)
+# --- Option 3: Interactive Map ---
+elif mode == "Interactive Map":
+    st.markdown("### Select Restaurant & Delivery Locations on Map")
 
-# Encode categorical columns
-def encode_inputs(df):
-    weather_map = {'Sunny': 0, 'Stormy': 1, 'Rainy': 2, 'Cloudy': 3}
-    traffic_map = {'Low': 0, 'Medium': 1, 'High': 2, 'Jam': 3}
-    order_map = {'Meat': 0, 'Vegetables': 1, 'Fruits and Vegetables': 2}
-    vehicle_map = {'motorcycle': 0, 'truck': 1}
-    festival_map = {'No': 0, 'Yes': 1}
+    start_coords = [16.412, 120.595]
+    m = folium.Map(location=start_coords, zoom_start=13)
 
-    df['Weatherconditions'] = df['Weatherconditions'].map(weather_map)
-    df['Road_traffic_density'] = df['Road_traffic_density'].map(traffic_map)
-    df['Type_of_order'] = df['Type_of_order'].map(order_map)
-    df['Type_of_vehicle'] = df['Type_of_vehicle'].map(vehicle_map)
-    df['Festival'] = df['Festival'].map(festival_map)
-    return df
+    folium.Marker(location=start_coords, popup="Restaurant", icon=folium.Icon(color="blue")).add_to(m)
+    folium.Marker(location=[16.422, 120.600], popup="Delivery", icon=folium.Icon(color="green")).add_to(m)
 
-encoded_data = encode_inputs(input_data)
+    map_data = st_folium(m, width=700, height=500)
 
-# --- Prediction ---
-if st.button("Predict Delivery Time"):
+    if map_data and "last_object_clicked" in map_data:
+        clicked = map_data["last_object_clicked"]
+        delivery_lat, delivery_lon = clicked["lat"], clicked["lng"]
+        st.info(f"📍 Delivery location: {delivery_lat}, {delivery_lon}")
+
+# ====================================================
+# 🧾 OTHER INPUT FEATURES
+# ====================================================
+st.subheader("🧠 Delivery Details")
+
+col1, col2 = st.columns(2)
+with col1:
+    age = st.number_input("Delivery Person Age", min_value=18, max_value=60, value=30)
+    rating = st.number_input("Delivery Person Rating", min_value=1.0, max_value=5.0, value=4.5, step=0.1)
+    traffic = st.selectbox("Road Traffic Density", ["Low", "Medium", "High", "Jam"])
+    weather = st.selectbox("Weather Conditions", ["Sunny", "Cloudy", "Rainy", "Stormy"])
+    vehicle = st.selectbox("Type of Vehicle", ["motorcycle", "scooter", "truck"])
+with col2:
+    order_type = st.selectbox("Type of Order", ["Meal", "Meat", "Vegetables", "Fruits and Vegetables"])
+    multiple_deliveries = st.number_input("Multiple Deliveries", min_value=0, max_value=3, value=0)
+    festival = st.selectbox("Festival", ["No", "Yes"])
+    order_hour = st.number_input("Order Time (24h format)", min_value=0, max_value=23, value=12)
+
+# ====================================================
+# 📏 COMPUTE DISTANCE
+# ====================================================
+if restaurant_lat and delivery_lat:
+    distance = geodesic((restaurant_lat, restaurant_lon), (delivery_lat, delivery_lon)).km
+    st.write(f"📏 **Calculated Distance:** {distance:.2f} km")
+else:
+    distance = 0.0
+
+# ====================================================
+# 🧮 PREDICTION
+# ====================================================
+if st.button("🚀 Predict Delivery Time"):
     try:
-        prediction = model.predict(encoded_data)
-        st.success(f"⏱️ Estimated Delivery Time: {round(prediction[0], 2)} minutes")
+        # Build input DataFrame (⚠️ must match your training features)
+        input_data = pd.DataFrame([{
+            "Delivery_person_Age": age,
+            "Delivery_person_Ratings": rating,
+            "Restaurant_latitude": restaurant_lat,
+            "Restaurant_longitude": restaurant_lon,
+            "Delivery_location_latitude": delivery_lat,
+            "Delivery_location_longitude": delivery_lon,
+            "Weatherconditions": weather,
+            "Road_traffic_density": traffic,
+            "Type_of_order": order_type,
+            "Type_of_vehicle": vehicle,
+            "multiple_deliveries": multiple_deliveries,
+            "Festival": festival,
+            "distance": distance,
+            "Order_hour": order_hour
+        }])
+
+        prediction = model.predict(input_data)[0]
+        st.success(f"⏱️ Estimated Delivery Time: **{prediction:.2f} minutes**")
+
     except Exception as e:
         st.error(f"⚠️ Error: {e}")
