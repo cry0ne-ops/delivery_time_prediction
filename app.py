@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import pickle
+import joblib
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from streamlit_folium import st_folium
@@ -12,8 +12,7 @@ import folium
 @st.cache_resource
 def load_model():
     try:
-        with open("delivery_time_model.pkl", "rb") as file:
-            model = pickle.load(file)
+        model = joblib.load("delivery_time_model.pkl")  # ✅ use joblib.load for .pkl made with joblib.dump
         return model
     except Exception as e:
         st.error(f"❌ Failed to load model: {e}")
@@ -70,30 +69,27 @@ elif mode == "Address Search":
 
 # --- Option 3: Interactive Map ---
 elif mode == "Interactive Map":
-    st.markdown("### 🗺️ Select Restaurant and Delivery Locations on the Map")
-    st.info("Left-click to add restaurant, right-click to add delivery location.")
+    st.markdown("### 🗺️ Select Restaurant and Delivery Locations on Map")
+    st.info("Click once for Restaurant, twice for Delivery.")
 
-    # Initialize default coordinates
     start_coords = [16.412, 120.595]
     m = folium.Map(location=start_coords, zoom_start=13)
 
-    # Add instructions
-    folium.Marker(
-        location=start_coords,
-        popup="Center (Default View)",
-        icon=folium.Icon(color="gray")
-    ).add_to(m)
+    # Add default markers if already set
+    if restaurant_lat and restaurant_lon:
+        folium.Marker([restaurant_lat, restaurant_lon], popup="Restaurant", icon=folium.Icon(color="blue")).add_to(m)
+    if delivery_lat and delivery_lon:
+        folium.Marker([delivery_lat, delivery_lon], popup="Delivery", icon=folium.Icon(color="green")).add_to(m)
 
-    # Display map
     map_data = st_folium(m, width=700, height=500)
 
     if map_data and "last_object_clicked" in map_data and map_data["last_object_clicked"]:
         clicked = map_data["last_object_clicked"]
         lat, lon = clicked["lat"], clicked["lng"]
-        st.write(f"📍 You clicked at: {lat:.6f}, {lon:.6f}")
 
-        # User chooses whether click is restaurant or delivery
+        st.write(f"📍 You clicked at: {lat:.6f}, {lon:.6f}")
         point_type = st.radio("Assign clicked point as:", ["Restaurant", "Delivery"])
+
         if point_type == "Restaurant":
             restaurant_lat, restaurant_lon = lat, lon
             st.success(f"🏪 Restaurant location set: {lat:.6f}, {lon:.6f}")
@@ -133,16 +129,11 @@ else:
 # ====================================================
 if st.button("🚀 Predict Delivery Time"):
     try:
-        # 🔢 Encode categorical features (manual encoding)
+        # 🔢 Encode categorical features
         weather_map = {"Sunny": 0, "Cloudy": 1, "Rainy": 2, "Stormy": 3}
         traffic_map = {"Low": 0, "Medium": 1, "High": 2, "Jam": 3}
         vehicle_map = {"motorcycle": 0, "scooter": 1, "truck": 2}
-        order_map = {
-            "Meal": 0,
-            "Meat": 1,
-            "Vegetables": 2,
-            "Fruits and Vegetables": 3
-        }
+        order_map = {"Meal": 0, "Meat": 1, "Vegetables": 2, "Fruits and Vegetables": 3}
         festival_map = {"No": 0, "Yes": 1}
 
         # 🧾 Prepare encoded input
@@ -165,7 +156,6 @@ if st.button("🚀 Predict Delivery Time"):
 
         # ✅ Predict using the model
         prediction = model.predict(input_data)[0]
-
         st.success(f"⏱️ Estimated Delivery Time: **{prediction:.2f} minutes**")
 
     except Exception as e:
