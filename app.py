@@ -1,22 +1,22 @@
 import streamlit as st
 import pandas as pd
-from joblib import load
+import pickle
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from streamlit_folium import st_folium
 import folium
 
 # ====================================================
-# 🔍 LOAD TRAINED MODEL SAFELY
+# 🔍 LOAD TRAINED MODEL SAFELY (.pkl format)
 # ====================================================
 @st.cache_resource
 def load_model():
     try:
-        model = load("delivery_time_model.joblib")
+        with open("delivery_time_model.pkl", "rb") as f:
+            model = pickle.load(f)
         return model
     except Exception as e:
-        st.error("❌ Failed to load model. Please ensure the file 'delivery_time_model.joblib' "
-                 "is in the same directory and not corrupted.")
+        st.error(f"❌ Failed to load model: {e}")
         st.stop()
 
 model = load_model()
@@ -135,7 +135,18 @@ if st.button("🚀 Predict Delivery Time"):
             "Order_hour": order_hour
         }])
 
-        prediction = model.predict(input_data)[0]
+        # Encode categorical values if model requires numeric input
+        input_data_encoded = pd.get_dummies(input_data)
+
+        # Align columns with model training
+        missing_cols = set(model.feature_names_in_) - set(input_data_encoded.columns)
+        for c in missing_cols:
+            input_data_encoded[c] = 0  # fill missing columns
+
+        input_data_encoded = input_data_encoded[model.feature_names_in_]
+
+        # Predict
+        prediction = model.predict(input_data_encoded)[0]
         st.success(f"⏱️ Estimated Delivery Time: **{prediction:.2f} minutes**")
 
     except Exception as e:
