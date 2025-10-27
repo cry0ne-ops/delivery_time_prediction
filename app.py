@@ -1,18 +1,19 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
-from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
-from streamlit_folium import st_folium
+from geopy.geocoders import Nominatim
 import folium
+from streamlit_folium import st_folium
 
-# ====================================================
-# 🔍 LOAD TRAINED MODEL SAFELY
-# ====================================================
+# =========================================================
+# 🔹 Load trained model safely
+# =========================================================
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load("delivery_time_model.pkl")  # ✅ use joblib.load for .pkl made with joblib.dump
+        model = joblib.load("delivery_time_model.pkl")
         return model
     except Exception as e:
         st.error(f"❌ Failed to load model: {e}")
@@ -20,143 +21,127 @@ def load_model():
 
 model = load_model()
 
-st.title("🚚 Improved Delivery Time Prediction System")
-st.caption("Prototype for Thesis: Prevent Food Spoilage through Regression Models")
+st.set_page_config(page_title="Delivery Time Prediction", layout="wide")
+st.title("🚚 Smart Delivery Time Prediction App")
+st.caption("Automatically detects real-world locations and predicts delivery time ⏱️")
 
-# ====================================================
-# 📍 LOCATION INPUT SECTION
-# ====================================================
-geolocator = Nominatim(user_agent="delivery_app")
-
-st.subheader("📍 Input Delivery and Restaurant Locations")
-
-mode = st.radio(
-    "Choose location input method:",
-    ["Manual Coordinates", "Address Search", "Interactive Map"]
-)
-
-restaurant_lat, restaurant_lon, delivery_lat, delivery_lon = None, None, None, None
-
-# --- Option 1: Manual Coordinates ---
-if mode == "Manual Coordinates":
-    restaurant_lat = st.number_input("Restaurant Latitude", value=16.408176, format="%.6f")
-    restaurant_lon = st.number_input("Restaurant Longitude", value=120.594594, format="%.6f")
-    delivery_lat = st.number_input("Delivery Latitude", value=16.420000, format="%.6f")
-    delivery_lon = st.number_input("Delivery Longitude", value=120.600000, format="%.6f")
-
-# --- Option 2: Address Search ---
-elif mode == "Address Search":
-    restaurant_address = st.text_input("Restaurant Address", "SM City Baguio, Philippines")
-    delivery_address = st.text_input("Delivery Address", "Burnham Park, Baguio City, Philippines")
-
-    def get_coordinates(address):
-        try:
-            location = geolocator.geocode(address)
-            if location:
-                return location.latitude, location.longitude
-            else:
-                st.warning(f"⚠️ Could not find coordinates for: {address}")
-                return None, None
-        except Exception:
-            st.error("❌ Error connecting to geolocation service.")
+# =========================================================
+# 📍 Geolocation helper
+# =========================================================
+def get_lat_lon(address):
+    geolocator = Nominatim(user_agent="delivery_time_app")
+    try:
+        location = geolocator.geocode(address)
+        if location:
+            return location.latitude, location.longitude
+        else:
             return None, None
+    except Exception:
+        return None, None
 
-    if st.button("🔍 Get Coordinates"):
-        restaurant_lat, restaurant_lon = get_coordinates(restaurant_address)
-        delivery_lat, delivery_lon = get_coordinates(delivery_address)
-        if restaurant_lat and delivery_lat:
-            st.success("✅ Coordinates fetched successfully!")
-
-# --- Option 3: Interactive Map ---
-elif mode == "Interactive Map":
-    st.markdown("### 🗺️ Select Restaurant and Delivery Locations on Map")
-    st.info("Click once for Restaurant, twice for Delivery.")
-
-    start_coords = [16.412, 120.595]
-    m = folium.Map(location=start_coords, zoom_start=13)
-
-    # Add default markers if already set
-    if restaurant_lat and restaurant_lon:
-        folium.Marker([restaurant_lat, restaurant_lon], popup="Restaurant", icon=folium.Icon(color="blue")).add_to(m)
-    if delivery_lat and delivery_lon:
-        folium.Marker([delivery_lat, delivery_lon], popup="Delivery", icon=folium.Icon(color="green")).add_to(m)
-
-    map_data = st_folium(m, width=700, height=500)
-
-    if map_data and "last_object_clicked" in map_data and map_data["last_object_clicked"]:
-        clicked = map_data["last_object_clicked"]
-        lat, lon = clicked["lat"], clicked["lng"]
-
-        st.write(f"📍 You clicked at: {lat:.6f}, {lon:.6f}")
-        point_type = st.radio("Assign clicked point as:", ["Restaurant", "Delivery"])
-
-        if point_type == "Restaurant":
-            restaurant_lat, restaurant_lon = lat, lon
-            st.success(f"🏪 Restaurant location set: {lat:.6f}, {lon:.6f}")
-        elif point_type == "Delivery":
-            delivery_lat, delivery_lon = lat, lon
-            st.success(f"📦 Delivery location set: {lat:.6f}, {lon:.6f}")
-
-# ====================================================
-# 🧾 OTHER INPUT FEATURES
-# ====================================================
-st.subheader("🧠 Delivery Details")
+# =========================================================
+# 🧠 Input: Delivery & Order Details
+# =========================================================
+st.header("🧍 Delivery & Order Details")
 
 col1, col2 = st.columns(2)
 with col1:
-    age = st.number_input("Delivery Person Age", min_value=18, max_value=60, value=30)
-    rating = st.number_input("Delivery Person Rating", min_value=1.0, max_value=5.0, value=4.5, step=0.1)
-    traffic = st.selectbox("Road Traffic Density", ["Low", "Medium", "High", "Jam"])
-    weather = st.selectbox("Weather Conditions", ["Sunny", "Cloudy", "Rainy", "Stormy"])
-    vehicle = st.selectbox("Type of Vehicle", ["motorcycle", "scooter", "truck"])
+    age = st.slider("Delivery Person Age", 18, 60, 30)
+    rating = st.slider("Delivery Person Rating", 1.0, 5.0, 4.5, 0.1)
+    multiple_deliveries = st.number_input("Number of Multiple Deliveries", 0, 10, 0)
 with col2:
-    order_type = st.selectbox("Type of Order", ["Meal", "Meat", "Vegetables", "Fruits and Vegetables"])
-    multiple_deliveries = st.number_input("Multiple Deliveries", min_value=0, max_value=3, value=0)
-    festival = st.selectbox("Festival", ["No", "Yes"])
-    order_hour = st.number_input("Order Time (24h format)", min_value=0, max_value=23, value=12)
+    order_date = st.date_input("Order Date")
+    time_ordered = st.time_input("Time Ordered")
+    time_picked = st.time_input("Time Picked")
 
-# ====================================================
-# 📏 COMPUTE DISTANCE
-# ====================================================
-if restaurant_lat and delivery_lat:
-    distance = geodesic((restaurant_lat, restaurant_lon), (delivery_lat, delivery_lon)).km
-    st.write(f"📏 **Calculated Distance:** {distance:.2f} km")
-else:
-    distance = 0.0
+# =========================================================
+# 🌦️ Environmental & Order Info
+# =========================================================
+st.header("🌦️ Environment & Traffic")
 
-# ====================================================
-# 🧮 PREDICTION
-# ====================================================
-if st.button("🚀 Predict Delivery Time"):
-    try:
-        # 🔢 Encode categorical features
-        weather_map = {"Sunny": 0, "Cloudy": 1, "Rainy": 2, "Stormy": 3}
-        traffic_map = {"Low": 0, "Medium": 1, "High": 2, "Jam": 3}
-        vehicle_map = {"motorcycle": 0, "scooter": 1, "truck": 2}
-        order_map = {"Meal": 0, "Meat": 1, "Vegetables": 2, "Fruits and Vegetables": 3}
+col3, col4, col5 = st.columns(3)
+with col3:
+    weather = st.selectbox("Weather Condition", ["Sunny", "Stormy", "Sandstorms", "Cloudy", "Fog", "Windy"])
+with col4:
+    traffic = st.selectbox("Road Traffic Density", ["Low", "Medium", "High", "Jam"])
+with col5:
+    festival = st.selectbox("Festival Day?", ["No", "Yes"])
+
+order_type = st.selectbox("Type of Order", ["Snack", "Meal", "Drinks", "Buffet"])
+vehicle = st.selectbox("Type of Vehicle", ["Motorcycle", "Scooter", "Electric Bike", "Bicycle"])
+
+# =========================================================
+# 📍 Address Input — Auto Detection
+# =========================================================
+st.header("📍 Real Location Detection")
+
+restaurant_address = st.text_input("Enter Restaurant Address", "SM City Baguio")
+delivery_address = st.text_input("Enter Delivery Address", "Burnham Park, Baguio City")
+
+# Only process if both addresses are provided
+if restaurant_address and delivery_address:
+    rest_lat, rest_lon = get_lat_lon(restaurant_address)
+    del_lat, del_lon = get_lat_lon(delivery_address)
+
+    if rest_lat and del_lat:
+        distance = geodesic((rest_lat, rest_lon), (del_lat, del_lon)).km
+        st.success(f"✅ Coordinates fetched successfully!")
+        st.write(f"**Restaurant:** {restaurant_address} → ({rest_lat:.5f}, {rest_lon:.5f})")
+        st.write(f"**Delivery:** {delivery_address} → ({del_lat:.5f}, {del_lon:.5f})")
+        st.write(f"📏 **Distance:** {distance:.2f} km")
+
+        # Display map automatically
+        m = folium.Map(location=[(rest_lat + del_lat) / 2, (rest_lon + del_lon) / 2], zoom_start=13)
+        folium.Marker([rest_lat, rest_lon], tooltip="Restaurant", icon=folium.Icon(color='green')).add_to(m)
+        folium.Marker([del_lat, del_lon], tooltip="Delivery Location", icon=folium.Icon(color='red')).add_to(m)
+        st_folium(m, width=700, height=400)
+
+        # =========================================================
+        # 🔢 Feature Encoding (must match training setup)
+        # =========================================================
+        weather_map = {"Sunny": 1, "Stormy": 2, "Sandstorms": 3, "Cloudy": 4, "Fog": 5, "Windy": 6}
+        traffic_map = {"Low": 1, "Medium": 2, "High": 3, "Jam": 4}
+        order_map = {"Snack": 1, "Meal": 2, "Drinks": 3, "Buffet": 4}
+        vehicle_map = {"Motorcycle": 1, "Scooter": 2, "Electric Bike": 3, "Bicycle": 4}
         festival_map = {"No": 0, "Yes": 1}
 
-        # 🧾 Prepare encoded input
+        # Compute time difference (optional feature)
+        time_diff = abs(
+            (pd.to_datetime(str(time_picked)) - pd.to_datetime(str(time_ordered))).total_seconds()
+        ) / 60
+
+        # =========================================================
+        # 🧩 Construct full 17-feature input
+        # =========================================================
         input_data = pd.DataFrame([{
+            "ID": 1,
+            "Delivery_person_ID": 1001,
             "Delivery_person_Age": age,
             "Delivery_person_Ratings": rating,
-            "Restaurant_latitude": restaurant_lat,
-            "Restaurant_longitude": restaurant_lon,
-            "Delivery_location_latitude": delivery_lat,
-            "Delivery_location_longitude": delivery_lon,
+            "Restaurant_latitude": rest_lat,
+            "Restaurant_longitude": rest_lon,
+            "Delivery_location_latitude": del_lat,
+            "Delivery_location_longitude": del_lon,
+            "Order_Date": int(order_date.strftime("%Y%m%d")),
+            "Time_Orderd": int(time_ordered.strftime("%H%M")),
+            "Time_Order_picked": int(time_picked.strftime("%H%M")),
             "Weatherconditions": weather_map[weather],
             "Road_traffic_density": traffic_map[traffic],
             "Type_of_order": order_map[order_type],
             "Type_of_vehicle": vehicle_map[vehicle],
             "multiple_deliveries": multiple_deliveries,
             "Festival": festival_map[festival],
-            "distance": distance,
-            "Order_hour": order_hour
         }])
 
-        # ✅ Predict using the model
-        prediction = model.predict(input_data)[0]
-        st.success(f"⏱️ Estimated Delivery Time: **{prediction:.2f} minutes**")
-
-    except Exception as e:
-        st.error(f"⚠️ Error during prediction: {e}")
+        # =========================================================
+        # 🧮 Prediction
+        # =========================================================
+        try:
+            prediction = model.predict(input_data)[0]
+            st.success(f"⏱️ **Predicted Delivery Time:** {prediction:.2f} minutes")
+        except Exception as e:
+            st.error(f"⚠️ Error during prediction: {e}")
+    else:
+        st.warning("⚠️ Unable to locate one or both addresses. Please check spelling or try nearby landmarks.")
+else:
+    st.info("ℹ️ Please enter both restaurant and delivery addresses to continue.")
