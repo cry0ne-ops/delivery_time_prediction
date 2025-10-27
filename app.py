@@ -1,21 +1,28 @@
 import streamlit as st
 import pandas as pd
-import pickle
+from joblib import load
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from streamlit_folium import st_folium
 import folium
 
-# --- Load the trained model ---
+# ====================================================
+# 🔍 LOAD TRAINED MODEL SAFELY
+# ====================================================
 @st.cache_resource
 def load_model():
-    with open("delivery_time_model.pkl", "rb") as file:
-        model = pickle.load(file)
-    return model
+    try:
+        model = load("delivery_time_model.joblib")
+        return model
+    except Exception as e:
+        st.error("❌ Failed to load model. Please ensure the file 'delivery_time_model.joblib' "
+                 "is in the same directory and not corrupted.")
+        st.stop()
 
 model = load_model()
+
 st.title("🚚 Improved Delivery Time Prediction System")
-st.caption("Prototype for thesis: Prevent Food Spoilage through Regression Models")
+st.caption("Prototype for Thesis: Prevent Food Spoilage through Regression Models")
 
 # ====================================================
 # 📍 LOCATION INPUT SECTION
@@ -31,7 +38,7 @@ mode = st.radio(
 
 restaurant_lat, restaurant_lon, delivery_lat, delivery_lon = None, None, None, None
 
-# --- Option 1: Manual ---
+# --- Option 1: Manual Coordinates ---
 if mode == "Manual Coordinates":
     restaurant_lat = st.number_input("Restaurant Latitude", value=16.408176, format="%.6f")
     restaurant_lon = st.number_input("Restaurant Longitude", value=120.594594, format="%.6f")
@@ -51,7 +58,7 @@ elif mode == "Address Search":
             else:
                 st.warning(f"⚠️ Could not find coordinates for: {address}")
                 return None, None
-        except:
+        except Exception:
             st.error("❌ Error connecting to geolocation service.")
             return None, None
 
@@ -110,7 +117,7 @@ else:
 # ====================================================
 if st.button("🚀 Predict Delivery Time"):
     try:
-        # Build input DataFrame (⚠️ must match your training features)
+        # Build input DataFrame (⚠️ Must match training features)
         input_data = pd.DataFrame([{
             "Delivery_person_Age": age,
             "Delivery_person_Ratings": rating,
@@ -132,4 +139,4 @@ if st.button("🚀 Predict Delivery Time"):
         st.success(f"⏱️ Estimated Delivery Time: **{prediction:.2f} minutes**")
 
     except Exception as e:
-        st.error(f"⚠️ Error: {e}")
+        st.error(f"⚠️ Error during prediction: {e}")
