@@ -22,11 +22,11 @@ def load_model():
 model = load_model()
 
 st.set_page_config(page_title="Delivery Time Prediction", layout="wide")
-st.title("🚚 Smart Delivery Time Prediction App")
-st.caption("Automatically detects real-world locations and predicts delivery time ⏱️")
+st.title("🚚 Improved Delivery Time Prediction System")
+st.caption("Prototype for Thesis: Prevent Food Spoilage through Regression Models")
 
 # =========================================================
-# 📍 Geolocation helper
+# 📍 Helper for geolocation
 # =========================================================
 def get_lat_lon(address):
     geolocator = Nominatim(user_agent="delivery_time_app")
@@ -40,9 +40,9 @@ def get_lat_lon(address):
         return None, None
 
 # =========================================================
-# 🧠 Input: Delivery & Order Details
+# 🧠 Delivery & Order Details
 # =========================================================
-st.header("🧍 Delivery & Order Details")
+st.header("🧠 Delivery & Order Details")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -61,57 +61,57 @@ st.header("🌦️ Environment & Traffic")
 
 col3, col4, col5 = st.columns(3)
 with col3:
-    weather = st.selectbox("Weather Condition", ["Sunny", "Stormy", "Sandstorms", "Cloudy", "Fog", "Windy"])
+    weather = st.selectbox("Weather Condition", ["Sunny", "Cloudy", "Rainy", "Stormy"])
 with col4:
     traffic = st.selectbox("Road Traffic Density", ["Low", "Medium", "High", "Jam"])
 with col5:
     festival = st.selectbox("Festival Day?", ["No", "Yes"])
 
-order_type = st.selectbox("Type of Order", ["Snack", "Meal", "Drinks", "Buffet"])
-vehicle = st.selectbox("Type of Vehicle", ["Motorcycle", "Scooter", "Electric Bike", "Bicycle"])
+# ✅ Updated order options
+order_type = st.selectbox("Type of Order", ["Meat", "Fruits", "Fruits and Vegetables"])
+vehicle = st.selectbox("Type of Vehicle", ["motorcycle", "scooter", "truck"])
 
 # =========================================================
 # 📍 Address Input — Auto Detection
 # =========================================================
 st.header("📍 Real Location Detection")
 
-restaurant_address = st.text_input("Enter Restaurant Address", "SM City Baguio")
-delivery_address = st.text_input("Enter Delivery Address", "Burnham Park, Baguio City")
+restaurant_address = st.text_input("Enter Restaurant Address", "SM City Baguio, Philippines")
+delivery_address = st.text_input("Enter Delivery Address", "Burnham Park, Baguio City, Philippines")
 
-# Only process if both addresses are provided
 if restaurant_address and delivery_address:
     rest_lat, rest_lon = get_lat_lon(restaurant_address)
     del_lat, del_lon = get_lat_lon(delivery_address)
 
     if rest_lat and del_lat:
         distance = geodesic((rest_lat, rest_lon), (del_lat, del_lon)).km
-        st.success(f"✅ Coordinates fetched successfully!")
+        st.success("✅ Coordinates fetched successfully!")
         st.write(f"**Restaurant:** {restaurant_address} → ({rest_lat:.5f}, {rest_lon:.5f})")
         st.write(f"**Delivery:** {delivery_address} → ({del_lat:.5f}, {del_lon:.5f})")
         st.write(f"📏 **Distance:** {distance:.2f} km")
 
-        # Display map automatically
+        # --- Map visualization
         m = folium.Map(location=[(rest_lat + del_lat) / 2, (rest_lon + del_lon) / 2], zoom_start=13)
-        folium.Marker([rest_lat, rest_lon], tooltip="Restaurant", icon=folium.Icon(color='green')).add_to(m)
-        folium.Marker([del_lat, del_lon], tooltip="Delivery Location", icon=folium.Icon(color='red')).add_to(m)
+        folium.Marker([rest_lat, rest_lon], tooltip="Restaurant", icon=folium.Icon(color='blue')).add_to(m)
+        folium.Marker([del_lat, del_lon], tooltip="Delivery", icon=folium.Icon(color='green')).add_to(m)
         st_folium(m, width=700, height=400)
 
         # =========================================================
-        # 🔢 Feature Encoding (must match training setup)
+        # 🔢 Encoding (must match training setup)
         # =========================================================
-        weather_map = {"Sunny": 1, "Stormy": 2, "Sandstorms": 3, "Cloudy": 4, "Fog": 5, "Windy": 6}
+        weather_map = {"Sunny": 1, "Cloudy": 2, "Rainy": 3, "Stormy": 4}
         traffic_map = {"Low": 1, "Medium": 2, "High": 3, "Jam": 4}
-        order_map = {"Snack": 1, "Meal": 2, "Drinks": 3, "Buffet": 4}
-        vehicle_map = {"Motorcycle": 1, "Scooter": 2, "Electric Bike": 3, "Bicycle": 4}
+        order_map = {"Meat": 1, "Fruits": 2, "Fruits and Vegetables": 3}
+        vehicle_map = {"motorcycle": 1, "scooter": 2, "truck": 3}
         festival_map = {"No": 0, "Yes": 1}
 
-        # Compute time difference (optional feature)
+        # Compute time difference
         time_diff = abs(
             (pd.to_datetime(str(time_picked)) - pd.to_datetime(str(time_ordered))).total_seconds()
         ) / 60
 
         # =========================================================
-        # 🧩 Construct full 17-feature input
+        # 🧩 Construct 17-feature input (must match model)
         # =========================================================
         input_data = pd.DataFrame([{
             "ID": 1,
@@ -130,11 +130,11 @@ if restaurant_address and delivery_address:
             "Type_of_order": order_map[order_type],
             "Type_of_vehicle": vehicle_map[vehicle],
             "multiple_deliveries": multiple_deliveries,
-            "Festival": festival_map[festival],
+            "Festival": festival_map[festival]
         }])
 
         # =========================================================
-        # 🧮 Prediction
+        # 🧮 Predict
         # =========================================================
         try:
             prediction = model.predict(input_data)[0]
@@ -142,6 +142,6 @@ if restaurant_address and delivery_address:
         except Exception as e:
             st.error(f"⚠️ Error during prediction: {e}")
     else:
-        st.warning("⚠️ Unable to locate one or both addresses. Please check spelling or try nearby landmarks.")
+        st.warning("⚠️ Could not locate one or both addresses. Please check spelling or try nearby landmarks.")
 else:
     st.info("ℹ️ Please enter both restaurant and delivery addresses to continue.")
