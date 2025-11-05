@@ -1,8 +1,7 @@
-streamlit
+streamlit 
+streamlit-folium 
+folium 
+geopy 
+requests 
+streamlit-geolocation
 pandas
-geopy
-joblib
-folium
-streamlit-folium
-streamlit-geocoder
-requests
