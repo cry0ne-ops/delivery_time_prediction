@@ -67,10 +67,10 @@ st.header("📍 Select Real Locations on Map")
 colA, colB = st.columns(2)
 with colA:
     st.subheader("🏪 Restaurant Location")
-    restaurant = streamlit_geolocation()
+    restaurant = streamlit_geolocation(key="restaurant_location")
 with colB:
     st.subheader("🏠 Delivery Location")
-    delivery = streamlit_geolocation()
+    delivery = streamlit_geolocation(key="delivery_location")
 
 # Proceed if both locations are selected
 if restaurant and delivery:
