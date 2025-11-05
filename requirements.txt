@@ -1,9 +1,8 @@
 streamlit
 pandas
-numpy
-joblib
-scikit-learn
 geopy
+joblib
 folium
 streamlit-folium
-pip install streamlit-geocoder streamlit-folium geopy joblib folium requests
+streamlit-geocoder
+requests
