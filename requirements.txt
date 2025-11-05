@@ -6,3 +6,4 @@ scikit-learn
 geopy
 folium
 streamlit-folium
+pip install streamlit-geocoder streamlit-folium geopy joblib folium requests
