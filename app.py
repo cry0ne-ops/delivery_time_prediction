@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 import joblib
-from geopy.distance import geodesic
 from streamlit_geolocation import streamlit_geolocation
 import folium
 from streamlit_folium import st_folium
 import requests
+from geopy.distance import geodesic
 
 # =============================================
 # API KEY for OpenRouteService
@@ -13,7 +13,7 @@ import requests
 ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc2Y2I5NmExMzM4MTRlNjhiOTY5OTIwMjk3MWRhMWExIiwiaCI6Im11cm11cjY0In0="
 
 # =============================================
-# Load Model
+# Load Trained Model
 # =============================================
 @st.cache_resource
 def load_model():
@@ -60,7 +60,7 @@ order_type = st.selectbox("Order Type", ["Meat", "Fruits", "Fruits and Vegetable
 vehicle = st.selectbox("Vehicle Type", ["motorcycle", "scooter", "truck"])
 
 # =============================================
-# Location Picker using streamlit-geolocation
+# Location Picker
 # =============================================
 st.header("📍 Select Real Locations on Map")
 
@@ -72,38 +72,44 @@ with colB:
     st.subheader("🏠 Delivery Location")
     delivery = streamlit_geolocation(key="delivery_location")
 
-# Proceed if both locations are selected
+# =============================================
+# Process locations if available
+# =============================================
 if restaurant and delivery:
     rest_lat, rest_lon = restaurant["latitude"], restaurant["longitude"]
     del_lat, del_lon = delivery["latitude"], delivery["longitude"]
 
-    st.success(f"Restaurant: ({rest_lat:.5f}, {rest_lon:.5f})")
-    st.success(f"Delivery: ({del_lat:.5f}, {del_lon:.5f})")
+    st.success(f"**Restaurant:** ({rest_lat:.5f}, {rest_lon:.5f})")
+    st.success(f"**Delivery:** ({del_lat:.5f}, {del_lon:.5f})")
 
     # =============================================
     # Get Road Route via OpenRouteService
     # =============================================
     def get_route(lat1, lon1, lat2, lon2):
         url = "https://api.openrouteservice.org/v2/directions/driving-car"
-        headers = {"Authorization": ORS_API_KEY}
-        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{lat2}"}
-        res = requests.get(url, headers=headers, params=params)
-        if res.status_code == 200:
-            coords = res.json()["features"][0]["geometry"]["coordinates"]
-            return [(c[1], c[0]) for c in coords]
-        else:
-            st.warning("⚠️ Route data could not be fetched. Showing straight line instead.")
-            return None
+        headers = {"Authorization": ORS_API_KEY, "Content-Type": "application/json"}
+        body = {"coordinates": [[lon1, lat1], [lon2, lat2]]}
 
-    route = get_route(rest_lat, rest_lon, del_lat, del_lon)
-    distance_km = geodesic((rest_lat, rest_lon), (del_lat, del_lon)).km
-    st.info(f"📏 Distance: {distance_km:.2f} km")
+        try:
+            res = requests.post(url, json=body, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+
+            route_coords = [(coord[1], coord[0]) for coord in data["features"][0]["geometry"]["coordinates"]]
+            distance_km = data["features"][0]["properties"]["segments"][0]["distance"] / 1000
+            duration_min = data["features"][0]["properties"]["segments"][0]["duration"] / 60
+            return route_coords, distance_km, duration_min
+        except Exception as e:
+            st.warning(f"⚠️ Could not fetch route from ORS: {e}")
+            return None, geodesic((lat1, lon1), (lat2, lon2)).km, None
+
+    route, distance_km, duration_min = get_route(rest_lat, rest_lon, del_lat, del_lon)
 
     # =============================================
-    # Map Display
+    # Map Visualization
     # =============================================
     m = folium.Map(location=[(rest_lat + del_lat) / 2, (rest_lon + del_lon) / 2], zoom_start=13)
-    folium.Marker([rest_lat, rest_lon], tooltip="Restaurant", icon=folium.Icon(color="blue")).add_to(m)
+    folium.Marker([rest_lat, rest_lon], tooltip="Restaurant", icon=folium.Icon(color="red")).add_to(m)
     folium.Marker([del_lat, del_lon], tooltip="Delivery", icon=folium.Icon(color="green")).add_to(m)
 
     if route:
@@ -114,7 +120,15 @@ if restaurant and delivery:
     st_folium(m, width=900, height=500)
 
     # =============================================
-    # Encode categorical data
+    # Display Route Info
+    # =============================================
+    st.subheader("🛣️ Route Information")
+    st.metric("📏 Road Distance (km)", f"{distance_km:.2f}")
+    if duration_min:
+        st.metric("⏱️ Estimated Driving Time (min)", f"{duration_min:.1f}")
+
+    # =============================================
+    # Feature Encoding for Model
     # =============================================
     weather_map = {"Sunny": 1, "Cloudy": 2, "Rainy": 3, "Stormy": 4}
     traffic_map = {"Low": 1, "Medium": 2, "High": 3, "Jam": 4}
@@ -127,7 +141,7 @@ if restaurant and delivery:
     ) / 60
 
     # =============================================
-    # Create input DataFrame
+    # Prepare Input Data for Prediction
     # =============================================
     input_data = pd.DataFrame([{
         "ID": 1,
@@ -150,12 +164,13 @@ if restaurant and delivery:
     }])
 
     # =============================================
-    # Prediction
+    # Predict Delivery Time
     # =============================================
     try:
         prediction = model.predict(input_data)[0]
-        st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
+        st.success(f"⏱️ **Predicted Delivery Time:** {prediction:.2f} minutes")
     except Exception as e:
-        st.error(f"⚠️ Error during prediction: {e}")
+        st.error(f"⚠️ Prediction error: {e}")
+
 else:
-    st.info("ℹ️ Please select both Restaurant and Delivery locations on the map.")
+    st.info("ℹ️ Please select both Restaurant and Delivery locations to continue.")
