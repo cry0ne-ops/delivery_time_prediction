@@ -10,7 +10,7 @@ import requests
 # =========================================================
 # 🔹 API Key for OpenRouteService
 # =========================================================
-ORS_API_KEY = "YOUR_API_KEY_HERE"  # Paste your real key here safely
+ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc2Y2I5NmExMzM4MTRlNjhiOTY5OTIwMjk3MWRhMWExIiwiaCI6Im11cm11cjY0In0="
 
 # =========================================================
 # 🔹 Load trained model safely
