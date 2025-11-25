@@ -12,20 +12,6 @@ import requests
 ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc2Y2I5NmExMzM4MTRlNjhiOTY5OTIwMjk3MWRhMWExIiwiaCI6Im11cm11cjY0In0="
 
 # =============================================
-# Load Model
-# =============================================
-@st.cache_resource
-def load_model():
-    try:
-        model = joblib.load("delivery_time_model.pkl")
-        return model
-    except Exception as e:
-        st.error(f"❌ Could not load model: {e}")
-        st.stop()
-
-model = load_model()
-
-# =============================================
 # Streamlit Page Setup
 # =============================================
 st.set_page_config(page_title="Delivery Time Prediction", layout="wide")
@@ -57,6 +43,39 @@ with col5:
 
 order_type = st.selectbox("Order Type", ["Meat", "Fruits", "Fruits and Vegetables"])
 vehicle = st.selectbox("Vehicle Type", ["motorcycle", "scooter", "truck"])
+
+# =============================================
+# Model Selection
+# =============================================
+st.header("🧩 Select Regression Model")
+
+model_choice = st.selectbox(
+    "Choose a regression model:",
+    [
+        "Random Forest (delivery_time_model.pkl)",
+        "Linear Regression (linear_regression_model.pkl)",
+        "Decision Tree (decision_tree_model.pkl)"
+    ]
+)
+
+model_file_map = {
+    "Random Forest (delivery_time_model.pkl)": "delivery_time_model.pkl",
+    "Linear Regression (linear_regression_model.pkl)": "linear_regression_model.pkl",
+    "Decision Tree (decision_tree_model.pkl)": "decision_tree_model.pkl"
+}
+
+selected_model_file = model_file_map[model_choice]
+
+@st.cache_resource
+def load_model(model_filename):
+    try:
+        model = joblib.load(model_filename)
+        return model
+    except Exception as e:
+        st.error(f"❌ Could not load model {model_filename}: {e}")
+        st.stop()
+
+model = load_model(selected_model_file)
 
 # =============================================
 # Geocoding helper (OpenRouteService)
@@ -101,7 +120,7 @@ if restaurant_data and delivery_data:
     def get_route(lat1, lon1, lat2, lon2):
         url = "https://api.openrouteservice.org/v2/directions/driving-car"
         headers = {"Authorization": ORS_API_KEY}
-        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{lat2}"}
+        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{del_lat}"}
         res = requests.get(url, headers=headers, params=params)
         if res.status_code == 200:
             coords = res.json()["features"][0]["geometry"]["coordinates"]
@@ -169,6 +188,7 @@ if restaurant_data and delivery_data:
     # =============================================
     try:
         prediction = model.predict(input_data)[0]
+        st.success(f"🧮 Model Used: **{model_choice}**")
         st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
     except Exception as e:
         st.error(f"⚠️ Error during prediction: {e}")
