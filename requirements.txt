@@ -1,7 +1,8 @@
-streamlit 
-streamlit-folium 
-folium 
-geopy 
-requests 
-streamlit-geolocation
+streamlit
 pandas
+scikit-learn
+joblib
+geopy
+requests
+folium
+streamlit-folium
