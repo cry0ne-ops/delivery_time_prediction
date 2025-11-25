@@ -58,14 +58,25 @@ model_choice = st.selectbox(
     ]
 )
 
+# Mapping models to their files
 model_file_map = {
     "Random Forest (delivery_time_model.pkl)": "delivery_time_model.pkl",
     "Linear Regression (linear_regression_model.pkl)": "linear_regression_model.pkl",
     "Decision Tree (decision_tree_model.pkl)": "decision_tree_model.pkl"
 }
 
-selected_model_file = model_file_map[model_choice]
+scaler_file_map = {
+    "Random Forest (delivery_time_model.pkl)": "random_forest_scaler.pkl",
+    "Linear Regression (linear_regression_model.pkl)": "linear_scaler.pkl",
+    "Decision Tree (decision_tree_model.pkl)": "decision_tree_scaler.pkl"
+}
 
+selected_model_file = model_file_map[model_choice]
+selected_scaler_file = scaler_file_map[model_choice]
+
+# =============================================
+# Load model and scaler
+# =============================================
 @st.cache_resource
 def load_model(model_filename):
     try:
@@ -75,10 +86,20 @@ def load_model(model_filename):
         st.error(f"❌ Could not load model {model_filename}: {e}")
         st.stop()
 
+@st.cache_resource
+def load_scaler(scaler_filename):
+    try:
+        scaler = joblib.load(scaler_filename)
+        return scaler
+    except Exception as e:
+        st.error(f"❌ Could not load scaler {scaler_filename}: {e}")
+        st.stop()
+
 model = load_model(selected_model_file)
+scaler = load_scaler(selected_scaler_file)
 
 # =============================================
-# Geocoding helper (OpenRouteService)
+# Geocoding helper
 # =============================================
 def geocode_address(address):
     if not address:
@@ -115,12 +136,12 @@ if restaurant_data and delivery_data:
     st.success(f"🏠 Delivery: ({del_lat:.5f}, {del_lon:.5f})")
 
     # =============================================
-    # Get Road Route via OpenRouteService
+    # Get Route
     # =============================================
     def get_route(lat1, lon1, lat2, lon2):
         url = "https://api.openrouteservice.org/v2/directions/driving-car"
         headers = {"Authorization": ORS_API_KEY}
-        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{del_lat}"}
+        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{lat2}"}
         res = requests.get(url, headers=headers, params=params)
         if res.status_code == 200:
             coords = res.json()["features"][0]["geometry"]["coordinates"]
@@ -139,12 +160,10 @@ if restaurant_data and delivery_data:
     m = folium.Map(location=[(rest_lat + del_lat) / 2, (rest_lon + del_lon) / 2], zoom_start=13)
     folium.Marker([rest_lat, rest_lon], tooltip="Restaurant", icon=folium.Icon(color="blue")).add_to(m)
     folium.Marker([del_lat, del_lon], tooltip="Delivery", icon=folium.Icon(color="green")).add_to(m)
-
     if route:
         folium.PolyLine(route, color="purple", weight=5, opacity=0.8).add_to(m)
     else:
         folium.PolyLine([(rest_lat, rest_lon), (del_lat, del_lon)], color="gray", dash_array="5").add_to(m)
-
     st_folium(m, width=900, height=500)
 
     # =============================================
@@ -155,10 +174,6 @@ if restaurant_data and delivery_data:
     order_map = {"Meat": 1, "Fruits": 2, "Fruits and Vegetables": 3}
     vehicle_map = {"motorcycle": 1, "scooter": 2, "truck": 3}
     festival_map = {"No": 0, "Yes": 1}
-
-    time_diff = abs(
-        (pd.to_datetime(str(time_picked)) - pd.to_datetime(str(time_ordered))).total_seconds()
-    ) / 60
 
     # =============================================
     # Create input DataFrame
@@ -184,10 +199,35 @@ if restaurant_data and delivery_data:
     }])
 
     # =============================================
-    # Prediction
+    # Numeric features for scaling
+    # =============================================
+    numeric_features = [
+        "Delivery_person_Age",
+        "Delivery_person_Ratings",
+        "Restaurant_latitude",
+        "Restaurant_longitude",
+        "Delivery_location_latitude",
+        "Delivery_location_longitude",
+        "Order_Date",
+        "Time_Orderd",
+        "Time_Order_picked",
+        "Weatherconditions",
+        "Road_traffic_density",
+        "Type_of_order",
+        "Type_of_vehicle",
+        "multiple_deliveries",
+        "Festival"
+    ]
+
+    # =============================================
+    # Scale and predict
     # =============================================
     try:
-        prediction = model.predict(input_data)[0]
+        input_scaled = input_data.copy()
+        input_scaled[numeric_features] = scaler.transform(input_data[numeric_features])
+
+        prediction = model.predict(input_scaled)[0]
+
         st.success(f"🧮 Model Used: **{model_choice}**")
         st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
     except Exception as e:
