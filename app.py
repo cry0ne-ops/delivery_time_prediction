@@ -5,6 +5,7 @@ from geopy.distance import geodesic
 import folium
 from streamlit_folium import st_folium
 import requests
+from datetime import datetime  # Added for better time handling
 
 # =============================================
 # API KEY for OpenRouteService
@@ -115,23 +116,29 @@ if restaurant_data and delivery_data:
     st.success(f"🏠 Delivery: ({del_lat:.5f}, {del_lon:.5f})")
 
     # =============================================
-    # Get Road Route via OpenRouteService
+    # Get Road Route via OpenRouteService (Enhanced to extract distance and time)
     # =============================================
-    def get_route(lat1, lon1, lat2, lon2):
+    def get_route_and_details(lat1, lon1, lat2, lon2):
         url = "https://api.openrouteservice.org/v2/directions/driving-car"
         headers = {"Authorization": ORS_API_KEY}
-        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{del_lat}"}
+        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{lat2}"}
         res = requests.get(url, headers=headers, params=params)
         if res.status_code == 200:
-            coords = res.json()["features"][0]["geometry"]["coordinates"]
-            return [(c[1], c[0]) for c in coords]
+            data = res.json()["features"][0]
+            coords = data["geometry"]["coordinates"]
+            route = [(c[1], c[0]) for c in coords]
+            # Extract actual driving distance (in km) and duration (in minutes)
+            distance_km = data["properties"]["segments"][0]["distance"] / 1000  # Convert meters to km
+            duration_min = data["properties"]["segments"][0]["duration"] / 60  # Convert seconds to minutes
+            return route, distance_km, duration_min
         else:
-            st.warning("⚠️ Route data could not be fetched. Showing straight line instead.")
-            return None
+            st.warning("⚠️ Route data could not be fetched. Falling back to geodesic distance.")
+            return None, geodesic((lat1, lon1), (lat2, lon2)).km, None  # Fallback: geodesic distance, no duration
 
-    route = get_route(rest_lat, rest_lon, del_lat, del_lon)
-    distance_km = geodesic((rest_lat, rest_lon), (del_lat, del_lon)).km
-    st.info(f"📏 Distance: {distance_km:.2f} km")
+    route, actual_distance_km, estimated_duration_min = get_route_and_details(rest_lat, rest_lon, del_lat, del_lon)
+    st.info(f"📏 Actual Driving Distance: {actual_distance_km:.2f} km")
+    if estimated_duration_min:
+        st.info(f"⏱️ Estimated Travel Time (from API): {estimated_duration_min:.2f} minutes")
 
     # =============================================
     # Map Display
@@ -148,20 +155,24 @@ if restaurant_data and delivery_data:
     st_folium(m, width=900, height=500)
 
     # =============================================
-    # Encode categorical data
+    # Enhanced Feature Engineering
     # =============================================
+    # Encode categoricals (keeping original for compatibility, but consider one-hot if retraining)
     weather_map = {"Sunny": 1, "Cloudy": 2, "Rainy": 3, "Stormy": 4}
     traffic_map = {"Low": 1, "Medium": 2, "High": 3, "Jam": 4}
     order_map = {"Meat": 1, "Fruits": 2, "Fruits and Vegetables": 3}
     vehicle_map = {"motorcycle": 1, "scooter": 2, "truck": 3}
     festival_map = {"No": 0, "Yes": 1}
 
-    time_diff = abs(
-        (pd.to_datetime(str(time_picked)) - pd.to_datetime(str(time_ordered))).total_seconds()
-    ) / 60
+    # Derive additional time-based features
+    order_datetime = pd.to_datetime(f"{order_date} {time_ordered}")
+    picked_datetime = pd.to_datetime(f"{order_date} {time_picked}")
+    time_diff_min = (picked_datetime - order_datetime).total_seconds() / 60  # Time from order to pickup
+    hour_of_day = time_ordered.hour  # 0-23
+    day_of_week = order_date.weekday()  # 0=Monday, 6=Sunday
 
     # =============================================
-    # Create input DataFrame
+    # Create input DataFrame (with new features)
     # =============================================
     input_data = pd.DataFrame([{
         "ID": 1,
@@ -180,8 +191,20 @@ if restaurant_data and delivery_data:
         "Type_of_order": order_map[order_type],
         "Type_of_vehicle": vehicle_map[vehicle],
         "multiple_deliveries": multiple_deliveries,
-        "Festival": festival_map[festival]
+        "Festival": festival_map[festival],
+        # New features for better prediction
+        "Actual_Distance_km": actual_distance_km,  # Use actual driving distance instead of geodesic
+        "Estimated_Travel_Time_min": estimated_duration_min if estimated_duration_min else 0,  # API-estimated time
+        "Time_Diff_Order_to_Pickup_min": time_diff_min,  # Time between order and pickup
+        "Hour_of_Day": hour_of_day,  # Time of day (e.g., peak hours affect traffic)
+        "Day_of_Week": day_of_week  # Weekday/weekend effects
     }])
+
+    # Optional: Scale numerical features for Linear Regression (uncomment if needed)
+    # from sklearn.preprocessing import StandardScaler
+    # scaler = StandardScaler()
+    # numerical_cols = ["Delivery_person_Age", "Delivery_person_Ratings", "Actual_Distance_km", ...]  # List relevant cols
+    # input_data[numerical_cols] = scaler.fit_transform(input_data[numerical_cols])
 
     # =============================================
     # Prediction
@@ -190,8 +213,11 @@ if restaurant_data and delivery_data:
         prediction = model.predict(input_data)[0]
         st.success(f"🧮 Model Used: **{model_choice}**")
         st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
+        # Optional: Show a comparison if API duration is available
+        if estimated_duration_min:
+            st.info(f"🔍 API Estimated Travel Time: {estimated_duration_min:.2f} min | Model Prediction: {prediction:.2f} min (includes prep/other factors)")
     except Exception as e:
-        st.error(f"⚠️ Error during prediction: {e}")
+        st.error(f"⚠️ Error during prediction: {e}. Ensure model is trained on these features.")
 
 else:
     st.info("ℹ️ Please enter both Restaurant and Delivery addresses.")
