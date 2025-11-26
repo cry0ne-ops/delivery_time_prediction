@@ -174,50 +174,43 @@ if restaurant_data and delivery_data:
     # =============================================
     # Create input DataFrame (with new features)
     # =============================================
-    input_data = pd.DataFrame([{
-        "ID": 1,
-        "Delivery_person_ID": 1001,
-        "Delivery_person_Age": age,
-        "Delivery_person_Ratings": rating,
-        "Restaurant_latitude": rest_lat,
-        "Restaurant_longitude": rest_lon,
-        "Delivery_location_latitude": del_lat,
-        "Delivery_location_longitude": del_lon,
-        "Order_Date": int(order_date.strftime("%Y%m%d")),
-        "Time_Orderd": int(time_ordered.strftime("%H%M")),
-        "Time_Order_picked": int(time_picked.strftime("%H%M")),
-        "Weatherconditions": weather_map[weather],
-        "Road_traffic_density": traffic_map[traffic],
-        "Type_of_order": order_map[order_type],
-        "Type_of_vehicle": vehicle_map[vehicle],
-        "multiple_deliveries": multiple_deliveries,
-        "Festival": festival_map[festival],
-        # New features for better prediction
-        "Actual_Distance_km": actual_distance_km,  # Use actual driving distance instead of geodesic
-        "Estimated_Travel_Time_min": estimated_duration_min if estimated_duration_min else 0,  # API-estimated time
-        "Time_Diff_Order_to_Pickup_min": time_diff_min,  # Time between order and pickup
-        "Hour_of_Day": hour_of_day,  # Time of day (e.g., peak hours affect traffic)
+   input_data = pd.DataFrame([{
+    "ID": 1,
+    "Delivery_person_ID": 1001,
+    "Delivery_person_Age": age,
+    "Delivery_person_Ratings": rating,
+    "Restaurant_latitude": rest_lat,
+    "Restaurant_longitude": rest_lon,
+    "Delivery_location_latitude": del_lat,
+    "Delivery_location_longitude": del_lon,
+    "Order_Date": int(order_date.strftime("%Y%m%d")),
+    "Time_Orderd": int(time_ordered.strftime("%H%M")),
+    "Time_Order_picked": int(time_picked.strftime("%H%M")),
+    "Weatherconditions": weather_map[weather],
+    "Road_traffic_density": traffic_map[traffic],
+    "Type_of_order": order_map[order_type],
+    "Type_of_vehicle": vehicle_map[vehicle],
+    "multiple_deliveries": multiple_deliveries,
+    "Festival": festival_map[festival],
+    # New features
+    "Actual_Distance_km": actual_distance_km,
+    "Estimated_Travel_Time_min": estimated_duration_min if estimated_duration_min else 0,
+    "Time_Diff_Order_to_Pickup_min": time_diff_min,
+    "Hour_of_Day": hour_of_day,
+    "Day_of_Week": day_of_week
+}])
+# Debug: Show feature count (remove after testing)
+st.write(f"Debug: Input has {input_data.shape[1]} features. Model expects {model.n_features_in_}.")
+# =============================================
+# Prediction
+# =============================================
+try:
+    prediction = model.predict(input_data)[0]
+    st.success(f"🧮 Model Used: **{model_choice}**")
+    st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
+    if estimated_duration_min:
+        st.info(f"🔍 API Estimated Travel Time: {estimated_duration_min:.2f} min | Model Prediction: {prediction:.2f} min")
+except Exception as e:
+    st.error(f"⚠️ Error during prediction: {e}. If feature mismatch, retrain model with new features.")t traffic)
         "Day_of_Week": day_of_week  # Weekday/weekend effects
     }])
-
-    # Optional: Scale numerical features for Linear Regression (uncomment if needed)
-    # from sklearn.preprocessing import StandardScaler
-    # scaler = StandardScaler()
-    # numerical_cols = ["Delivery_person_Age", "Delivery_person_Ratings", "Actual_Distance_km", ...]  # List relevant cols
-    # input_data[numerical_cols] = scaler.fit_transform(input_data[numerical_cols])
-
-    # =============================================
-    # Prediction
-    # =============================================
-    try:
-        prediction = model.predict(input_data)[0]
-        st.success(f"🧮 Model Used: **{model_choice}**")
-        st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
-        # Optional: Show a comparison if API duration is available
-        if estimated_duration_min:
-            st.info(f"🔍 API Estimated Travel Time: {estimated_duration_min:.2f} min | Model Prediction: {prediction:.2f} min (includes prep/other factors)")
-    except Exception as e:
-        st.error(f"⚠️ Error during prediction: {e}. Ensure model is trained on these features.")
-
-else:
-    st.info("ℹ️ Please enter both Restaurant and Delivery addresses.")
