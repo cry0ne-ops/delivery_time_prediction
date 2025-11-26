@@ -52,7 +52,7 @@ st.header("🧩 Select Regression Model")
 model_choice = st.selectbox(
     "Choose a regression model:",
     [
-        "Random Forest (delivery_time_model.pkl)",
+        "Random Forest (random_forest_model.pkl)",
         "Linear Regression (linear_regression_model.pkl)",
         "Decision Tree (decision_tree_model.pkl)"
     ]
