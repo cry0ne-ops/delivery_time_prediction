@@ -175,7 +175,7 @@ if restaurant_data and delivery_data:
     day_of_week = order_date.weekday()
 
     # =============================================
-    # Create Input DataFrame (22 Features)
+    # Create Input DataFrame (Temporarily 17 Features - Uncomment New Ones After Retraining)
     # =============================================
     input_data = pd.DataFrame([{
         "ID": 1,
@@ -194,16 +194,16 @@ if restaurant_data and delivery_data:
         "Type_of_order": order_map[order_type],
         "Type_of_vehicle": vehicle_map[vehicle],
         "multiple_deliveries": multiple_deliveries,
-        "Festival": festival_map[festival],
-        # New features for improved predictions
-        "Actual_Distance_km": actual_distance_km,
-        "Estimated_Travel_Time_min": estimated_duration_min if estimated_duration_min else 0,
-        "Time_Diff_Order_to_Pickup_min": time_diff_min,
-        "Hour_of_Day": hour_of_day,
-        "Day_of_Week": day_of_week
+        "Festival": festival_map[festival]
+        # Uncomment after retraining models on 22 features:
+        # "Actual_Distance_km": actual_distance_km,
+        # "Estimated_Travel_Time_min": estimated_duration_min if estimated_duration_min else 0,
+        # "Time_Diff_Order_to_Pickup_min": time_diff_min,
+        # "Hour_of_Day": hour_of_day,
+        # "Day_of_Week": day_of_week
     }])
 
-    # Debug: Display feature count for troubleshooting
+    # Debug: Display feature count
     st.write(f"🔍 Debug: Input DataFrame has {input_data.shape[1]} features. Model expects {model.n_features_in_}.")
 
     # =============================================
@@ -214,9 +214,9 @@ if restaurant_data and delivery_data:
         st.success(f"🧮 Model Used: **{model_choice}**")
         st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
         if estimated_duration_min:
-            st.info(f"🔍 API Estimated Travel Time: {estimated_duration_min:.2f} min | Model Prediction: {prediction:.2f} min (includes prep/other factors)")
+            st.info(f"🔍 API Estimated Travel Time: {estimated_duration_min:.2f} min | Model Prediction: {prediction:.2f} min")
     except Exception as e:
-        st.error(f"⚠️ Error during prediction: {e}. Ensure model is retrained on 22 features.")
+        st.error(f"⚠️ Error during prediction: {e}. Retrain models for 22 features.")
 
 else:
     st.info("ℹ️ Please enter both Restaurant and Delivery addresses.")
