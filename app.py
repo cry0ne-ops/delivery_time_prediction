@@ -5,7 +5,6 @@ from geopy.distance import geodesic
 import folium
 from streamlit_folium import st_folium
 import requests
-from datetime import datetime
 
 # =============================================
 # API KEY for OpenRouteService
@@ -79,20 +78,17 @@ def load_model(model_filename):
 model = load_model(selected_model_file)
 
 # =============================================
-# Geocoding Helper (OpenRouteService)
+# Geocoding helper (OpenRouteService)
 # =============================================
 def geocode_address(address):
     if not address:
         return None
     url = "https://api.openrouteservice.org/geocode/search"
     params = {"api_key": ORS_API_KEY, "text": address, "size": 1}
-    try:
-        res = requests.get(url, params=params, timeout=10)
-        if res.status_code == 200 and res.json().get("features"):
-            coords = res.json()["features"][0]["geometry"]["coordinates"]
-            return {"lat": coords[1], "lon": coords[0]}
-    except Exception as e:
-        st.warning(f"⚠️ Geocoding failed for '{address}': {e}")
+    res = requests.get(url, params=params)
+    if res.status_code == 200 and res.json().get("features"):
+        coords = res.json()["features"][0]["geometry"]["coordinates"]
+        return {"lat": coords[1], "lon": coords[0]}
     return None
 
 # =============================================
@@ -109,7 +105,7 @@ with colB:
     delivery_data = geocode_address(delivery_address) if delivery_address else None
 
 # =============================================
-# Proceed if Both Locations Selected
+# Proceed if both locations selected
 # =============================================
 if restaurant_data and delivery_data:
     rest_lat, rest_lon = restaurant_data["lat"], restaurant_data["lon"]
@@ -119,30 +115,23 @@ if restaurant_data and delivery_data:
     st.success(f"🏠 Delivery: ({del_lat:.5f}, {del_lon:.5f})")
 
     # =============================================
-    # Get Road Route and Details via OpenRouteService
+    # Get Road Route via OpenRouteService
     # =============================================
-    def get_route_and_details(lat1, lon1, lat2, lon2):
+    def get_route(lat1, lon1, lat2, lon2):
         url = "https://api.openrouteservice.org/v2/directions/driving-car"
         headers = {"Authorization": ORS_API_KEY}
-        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{lat2}"}
-        try:
-            res = requests.get(url, headers=headers, params=params, timeout=10)
-            if res.status_code == 200:
-                data = res.json()["features"][0]
-                coords = data["geometry"]["coordinates"]
-                route = [(c[1], c[0]) for c in coords]
-                distance_km = data["properties"]["segments"][0]["distance"] / 1000  # Meters to km
-                duration_min = data["properties"]["segments"][0]["duration"] / 60  # Seconds to minutes
-                return route, distance_km, duration_min
-        except Exception as e:
-            st.warning(f"⚠️ Route data fetch failed: {e}. Using fallback.")
-        # Fallback: Geodesic distance, no duration
-        return None, geodesic((lat1, lon1), (lat2, lon2)).km, None
+        params = {"start": f"{lon1},{lat1}", "end": f"{lon2},{del_lat}"}
+        res = requests.get(url, headers=headers, params=params)
+        if res.status_code == 200:
+            coords = res.json()["features"][0]["geometry"]["coordinates"]
+            return [(c[1], c[0]) for c in coords]
+        else:
+            st.warning("⚠️ Route data could not be fetched. Showing straight line instead.")
+            return None
 
-    route, actual_distance_km, estimated_duration_min = get_route_and_details(rest_lat, rest_lon, del_lat, del_lon)
-    st.info(f"📏 Actual Driving Distance: {actual_distance_km:.2f} km")
-    if estimated_duration_min:
-        st.info(f"⏱️ Estimated Travel Time (from API): {estimated_duration_min:.2f} minutes")
+    route = get_route(rest_lat, rest_lon, del_lat, del_lon)
+    distance_km = geodesic((rest_lat, rest_lon), (del_lat, del_lon)).km
+    st.info(f"📏 Distance: {distance_km:.2f} km")
 
     # =============================================
     # Map Display
@@ -159,7 +148,7 @@ if restaurant_data and delivery_data:
     st_folium(m, width=900, height=500)
 
     # =============================================
-    # Enhanced Feature Engineering
+    # Encode categorical data
     # =============================================
     weather_map = {"Sunny": 1, "Cloudy": 2, "Rainy": 3, "Stormy": 4}
     traffic_map = {"Low": 1, "Medium": 2, "High": 3, "Jam": 4}
@@ -167,15 +156,12 @@ if restaurant_data and delivery_data:
     vehicle_map = {"motorcycle": 1, "scooter": 2, "truck": 3}
     festival_map = {"No": 0, "Yes": 1}
 
-    # Derived time features
-    order_datetime = pd.to_datetime(f"{order_date} {time_ordered}")
-    picked_datetime = pd.to_datetime(f"{order_date} {time_picked}")
-    time_diff_min = (picked_datetime - order_datetime).total_seconds() / 60
-    hour_of_day = time_ordered.hour
-    day_of_week = order_date.weekday()
+    time_diff = abs(
+        (pd.to_datetime(str(time_picked)) - pd.to_datetime(str(time_ordered))).total_seconds()
+    ) / 60
 
     # =============================================
-    # Create Input DataFrame (Temporarily 17 Features - Uncomment New Ones After Retraining)
+    # Create input DataFrame
     # =============================================
     input_data = pd.DataFrame([{
         "ID": 1,
@@ -195,16 +181,7 @@ if restaurant_data and delivery_data:
         "Type_of_vehicle": vehicle_map[vehicle],
         "multiple_deliveries": multiple_deliveries,
         "Festival": festival_map[festival]
-        # Uncomment after retraining models on 22 features:
-        # "Actual_Distance_km": actual_distance_km,
-        # "Estimated_Travel_Time_min": estimated_duration_min if estimated_duration_min else 0,
-        # "Time_Diff_Order_to_Pickup_min": time_diff_min,
-        # "Hour_of_Day": hour_of_day,
-        # "Day_of_Week": day_of_week
     }])
-
-    # Debug: Display feature count
-    st.write(f"🔍 Debug: Input DataFrame has {input_data.shape[1]} features. Model expects {model.n_features_in_}.")
 
     # =============================================
     # Prediction
@@ -213,10 +190,8 @@ if restaurant_data and delivery_data:
         prediction = model.predict(input_data)[0]
         st.success(f"🧮 Model Used: **{model_choice}**")
         st.success(f"⏱️ Predicted Delivery Time: **{prediction:.2f} minutes**")
-        if estimated_duration_min:
-            st.info(f"🔍 API Estimated Travel Time: {estimated_duration_min:.2f} min | Model Prediction: {prediction:.2f} min")
     except Exception as e:
-        st.error(f"⚠️ Error during prediction: {e}. Retrain models for 22 features.")
+        st.error(f"⚠️ Error during prediction: {e}")
 
 else:
     st.info("ℹ️ Please enter both Restaurant and Delivery addresses.")
