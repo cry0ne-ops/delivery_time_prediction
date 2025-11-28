@@ -5,6 +5,7 @@ from geopy.distance import geodesic
 import folium
 from streamlit_folium import st_folium
 import requests
+import math
 
 # =============================================
 # API KEY for OpenRouteService
@@ -147,6 +148,18 @@ if restaurant_data and delivery_data:
 
     st_folium(m, width=900, height=500)
 
+    # --- Distance Calculator ---
+with col_input:
+    st.markdown("### 📏 Distance Calculator (km)")
+
+    distance = haversine_distance(
+        st.session_state["Restaurant_latitude"],
+        st.session_state["Restaurant_longitude"],
+        st.session_state["Delivery_location_latitude"],
+        st.session_state["Delivery_location_longitude"]
+    )
+    st.metric("Distance between Restaurant & Delivery", f"{distance:.2f} km")
+
     # =============================================
     # Encode categorical data
     # =============================================
@@ -195,3 +208,18 @@ if restaurant_data and delivery_data:
 
 else:
     st.info("ℹ️ Please enter both Restaurant and Delivery addresses.")
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great-circle distance between two points on the Earth in km.
+    """
+    R = 6371  # Earth radius in km
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    return R * c
