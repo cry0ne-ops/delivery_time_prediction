@@ -309,5 +309,6 @@ with col_map:
     )
     if distance_km is not None:
         st.markdown(f"**🛣️ Driving Distance:** {distance_km:.2f} km")
+        st.markdown(f"**⏱️ Estimated Driving Duration:** {duration_min:.1f} min")
     else:
         st.markdown("**⚠️ Could not calculate driving distance.**")
